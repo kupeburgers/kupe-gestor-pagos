@@ -549,6 +549,7 @@
             showAlerts();
         }
 
+
         async function addPayment() {
             if (!currentUser) return;
 
@@ -567,7 +568,6 @@
             const { error } = await supabase
                 .from('payments')
                 .insert([{
-                    user_id: currentUser,
                     provider,
                     amount,
                     payment_date: date,
