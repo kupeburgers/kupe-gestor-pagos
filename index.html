@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestor de Pagos - Kupe</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -67,12 +68,6 @@
         .user-btn:hover {
             transform: translateY(-5px);
             box-shadow: 0 8px 12px rgba(102, 126, 234, 0.3);
-        }
-
-        .user-btn span {
-            display: block;
-            font-size: 16px;
-            margin-top: 10px;
         }
 
         .app-screen {
@@ -215,12 +210,6 @@
             background: #ffebee;
             border: 1px solid #d32f2f;
             color: #d32f2f;
-        }
-
-        .alert-warning {
-            background: #fff3e0;
-            border: 1px solid #f57c00;
-            color: #f57c00;
         }
 
         .alert-info {
@@ -408,10 +397,18 @@
             color: #667eea;
             border-bottom-color: #667eea;
         }
+
+        .sync-status {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 12px;
+            color: #667eea;
+            min-height: 20px;
+        }
     </style>
 </head>
 <body>
-    <!-- PANTALLA DE LOGIN -->
+    <!-- LOGIN SCREEN -->
     <div id="login-screen" class="login-screen">
         <div class="login-card">
             <h1>💰 Gestor de Pagos</h1>
@@ -427,13 +424,13 @@
         </div>
     </div>
 
-    <!-- PANTALLA DE APP -->
+    <!-- APP SCREEN -->
     <div id="app-screen" class="app-screen">
         <div class="container">
             <div class="header">
                 <div class="header-left">
                     <h1>💰 Gestor de Pagos - <span id="user-name">Kupe</span></h1>
-                    <p class="subtitle">Organización de pagos en tiempo real</p>
+                    <p class="subtitle">Datos compartidos en tiempo real</p>
                 </div>
                 <button class="logout-btn" onclick="logout()">Salir</button>
             </div>
@@ -493,8 +490,19 @@
     </div>
 
     <script>
+        const SUPABASE_URL = 'https://lqpzhzworncmcuptesjh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxcHpoendvcm5jbWN1cHRlc2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NDI2NDYsImV4cCI6MjA4OTUxODY0Nn0.sa4SrtesQLLpP898P4zKUGeYbbILxQ2PUoaOy-dXFjI';
+
+        let supabase = null;
         let currentUser = null;
         let payments = [];
+        let subscription = null;
+
+        function initSupabase() {
+            if (!supabase && window.supabase) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            }
+        }
 
         function selectUser(user) {
             currentUser = user;
@@ -506,6 +514,9 @@
         function logout() {
             currentUser = null;
             localStorage.removeItem('selectedUser');
+            if (subscription) {
+                subscription.unsubscribe();
+            }
             showLogin();
         }
 
@@ -522,15 +533,48 @@
             document.getElementById('app-screen').style.display = 'none';
         }
 
-        function loadPayments() {
-            payments = JSON.parse(localStorage.getItem('payments') || '[]');
-            payments.sort((a, b) => new Date(a.payment_date) - new Date(b.payment_date));
-            renderPayments();
-            updateSummary();
-            showAlerts();
+        async function loadPayments() {
+            if (!supabase || !currentUser) return;
+
+            try {
+                const { data, error } = await supabase
+                    .from('payments')
+                    .select('*')
+                    .order('payment_date', { ascending: true });
+
+                if (error) {
+                    console.error('Error loading payments:', error);
+                    return;
+                }
+
+                payments = data || [];
+                renderPayments();
+                updateSummary();
+                showAlerts();
+
+                subscribeToChanges();
+            } catch (err) {
+                console.error('Error en loadPayments:', err);
+            }
         }
 
-        function addPayment() {
+        function subscribeToChanges() {
+            if (!supabase || subscription) return;
+
+            subscription = supabase
+                .channel('payments-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'payments' },
+                    (payload) => {
+                        loadPayments();
+                    }
+                )
+                .subscribe();
+        }
+
+        async function addPayment() {
+            if (!supabase || !currentUser) return;
+
             const provider = document.getElementById('provider').value.trim();
             const amount = parseFloat(document.getElementById('amount').value);
             const date = document.getElementById('date').value;
@@ -543,39 +587,65 @@
 
             showSync('Guardando...');
 
-            const newPayment = {
-                id: Date.now(),
-                provider,
-                amount,
-                payment_date: date,
-                notes,
-                paid: false
-            };
+            try {
+                const { error } = await supabase
+                    .from('payments')
+                    .insert([{
+                        provider,
+                        amount,
+                        payment_date: date,
+                        notes,
+                        paid: false
+                    }]);
 
-            payments.push(newPayment);
-            localStorage.setItem('payments', JSON.stringify(payments));
+                if (error) {
+                    alert('Error: ' + error.message);
+                    showSync('Error al guardar');
+                    return;
+                }
 
-            document.getElementById('provider').value = '';
-            document.getElementById('amount').value = '';
-            document.getElementById('date').value = '';
-            document.getElementById('notes').value = '';
+                document.getElementById('provider').value = '';
+                document.getElementById('amount').value = '';
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+                document.getElementById('notes').value = '';
 
-            showSync('✅ Guardado');
-            loadPayments();
+                showSync('✅ Guardado');
+                await loadPayments();
+            } catch (err) {
+                alert('Error: ' + err.message);
+                showSync('Error al guardar');
+            }
         }
 
-        function togglePaymentStatus(id) {
+        async function togglePaymentStatus(id) {
+            if (!supabase || !currentUser) return;
+
             const payment = payments.find(p => p.id === id);
             if (!payment) return;
 
             showSync('Actualizando...');
-            payment.paid = !payment.paid;
-            localStorage.setItem('payments', JSON.stringify(payments));
-            loadPayments();
-            showSync('✅ Actualizado');
+
+            try {
+                const { error } = await supabase
+                    .from('payments')
+                    .update({ paid: !payment.paid })
+                    .eq('id', id);
+
+                if (error) {
+                    alert('Error: ' + error.message);
+                    return;
+                }
+
+                showSync('✅ Actualizado');
+                await loadPayments();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
         }
 
-        function editPayment(id) {
+        async function editPayment(id) {
+            if (!supabase || !currentUser) return;
+
             const payment = payments.find(p => p.id === id);
             if (!payment) return;
 
@@ -592,23 +662,52 @@
             if (newNotes === null) return;
 
             showSync('Guardando cambios...');
-            payment.provider = newProvider;
-            payment.amount = parseFloat(newAmount);
-            payment.payment_date = newDate;
-            payment.notes = newNotes;
-            localStorage.setItem('payments', JSON.stringify(payments));
-            loadPayments();
-            showSync('✅ Editado');
+
+            try {
+                const { error } = await supabase
+                    .from('payments')
+                    .update({
+                        provider: newProvider,
+                        amount: parseFloat(newAmount),
+                        payment_date: newDate,
+                        notes: newNotes
+                    })
+                    .eq('id', id);
+
+                if (error) {
+                    alert('Error: ' + error.message);
+                    return;
+                }
+
+                showSync('✅ Editado');
+                await loadPayments();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
         }
 
-        function deletePayment(id) {
+        async function deletePayment(id) {
+            if (!supabase || !currentUser) return;
             if (!confirm('¿Borrar este pago?')) return;
 
             showSync('Borrando...');
-            payments = payments.filter(p => p.id !== id);
-            localStorage.setItem('payments', JSON.stringify(payments));
-            loadPayments();
-            showSync('✅ Eliminado');
+
+            try {
+                const { error } = await supabase
+                    .from('payments')
+                    .delete()
+                    .eq('id', id);
+
+                if (error) {
+                    alert('Error: ' + error.message);
+                    return;
+                }
+
+                showSync('✅ Eliminado');
+                await loadPayments();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
         }
 
         function showSync(msg) {
@@ -767,8 +866,6 @@
                 currentUser = savedUser;
                 showApp();
                 loadPayments();
-                if (refreshInterval) clearInterval(refreshInterval);
-                refreshInterval = setInterval(loadPayments, 5000);
             } else {
                 showLogin();
             }
