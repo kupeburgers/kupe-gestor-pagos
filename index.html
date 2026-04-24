@@ -534,10 +534,10 @@
         }
 
         async function loadPayments() {
-            if (!supabase || !currentUser) return;
+            if (!db || !currentUser) return;
 
             try {
-                const { data, error } = await supabase
+                const { data, error } = await db
                     .from('payments')
                     .select('*')
                     .order('payment_date', { ascending: true });
@@ -559,9 +559,9 @@
         }
 
         function subscribeToChanges() {
-            if (!supabase || subscription) return;
+            if (!db || subscription) return;
 
-            subscription = supabase
+            subscription = db
                 .channel('payments-changes')
                 .on('postgres_changes',
                     { event: '*', schema: 'public', table: 'payments' },
@@ -573,7 +573,7 @@
         }
 
         async function addPayment() {
-            if (!supabase || !currentUser) return;
+            if (!db || !currentUser) return;
 
             const provider = document.getElementById('provider').value.trim();
             const amount = parseFloat(document.getElementById('amount').value);
@@ -588,7 +588,7 @@
             showSync('Guardando...');
 
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('payments')
                     .insert([{
                         provider,
@@ -618,7 +618,7 @@
         }
 
         async function togglePaymentStatus(id) {
-            if (!supabase || !currentUser) return;
+            if (!db || !currentUser) return;
 
             const payment = payments.find(p => p.id === id);
             if (!payment) return;
@@ -626,7 +626,7 @@
             showSync('Actualizando...');
 
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('payments')
                     .update({ paid: !payment.paid })
                     .eq('id', id);
@@ -644,7 +644,7 @@
         }
 
         async function editPayment(id) {
-            if (!supabase || !currentUser) return;
+            if (!db || !currentUser) return;
 
             const payment = payments.find(p => p.id === id);
             if (!payment) return;
@@ -664,7 +664,7 @@
             showSync('Guardando cambios...');
 
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('payments')
                     .update({
                         provider: newProvider,
@@ -687,13 +687,13 @@
         }
 
         async function deletePayment(id) {
-            if (!supabase || !currentUser) return;
+            if (!db || !currentUser) return;
             if (!confirm('¿Borrar este pago?')) return;
 
             showSync('Borrando...');
 
             try {
-                const { error } = await supabase
+                const { error } = await db
                     .from('payments')
                     .delete()
                     .eq('id', id);
