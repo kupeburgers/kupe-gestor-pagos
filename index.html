@@ -493,14 +493,14 @@
         const SUPABASE_URL = 'https://innzbvfbvoanuxdciiso.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlubnpidmZidm9hbnV4ZGNpaXNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTYzNzIsImV4cCI6MjA5MjYzMjM3Mn0.Auh69v5RRUUO5Hkaw7i1NOkWdJNntpOnJfbU0AW6w2U';
 
-        let supabase = null;
+        let db = null;
         let currentUser = null;
         let payments = [];
         let subscription = null;
 
         function initSupabase() {
-            if (!supabase && window.supabase) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            if (!db && window.supabase) {
+                db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
             }
         }
 
