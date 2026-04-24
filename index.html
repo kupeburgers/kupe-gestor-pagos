@@ -423,23 +423,17 @@
 <body>
     <div id="auth-screen" class="auth-container">
         <h1>💰 Gestor de Pagos</h1>
-        <div id="auth-content">
-            <form class="auth-form" onsubmit="handleLogin(event)">
-                <input type="email" id="login-email" placeholder="Email" required>
-                <input type="password" id="login-password" placeholder="Contraseña" required>
-                <button type="submit">Ingresar</button>
-            </form>
-            <div class="auth-toggle">
-                ¿Sin cuenta? <a onclick="toggleAuthMode()">Registrate aquí</a>
-            </div>
+        <p style="text-align: center; color: #666; margin-bottom: 30px; font-size: 16px;">¿Quién sos?</p>
+        <div id="auth-content" style="display: flex; gap: 15px;">
+            <button type="button" style="flex: 1; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 24px; cursor: pointer; font-weight: 600;" onclick="handleUserSelect('rochi')">👨 Rochi</button>
+            <button type="button" style="flex: 1; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 24px; cursor: pointer; font-weight: 600;" onclick="handleUserSelect('pato')">🧑 Pato</button>
         </div>
-        <div id="error-message" style="color: #d32f2f; margin-top: 15px; text-align: center;"></div>
     </div>
 
     <div id="app-screen" class="app-container">
         <div class="header">
             <div class="header-left">
-                <h1>💰 Gestor de Pagos - Kupe</h1>
+                <h1>💰 Gestor de Pagos - <span id="current-user-name">Kupe</span></h1>
                 <p class="subtitle">Organización de pagos en tiempo real</p>
             </div>
             <button class="logout-btn" onclick="handleLogout()">Salir</button>
@@ -505,68 +499,38 @@
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let currentUser = null;
-        let authMode = 'login';
         let payments = [];
+        let refreshInterval = null;
 
-        async function handleLogin(event) {
-            event.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            const errorDiv = document.getElementById('error-message');
-
-            try {
-                if (authMode === 'login') {
-                    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-                    if (error) throw new Error(error.message);
-                } else {
-                    const { data, error } = await supabase.auth.signUp({ email, password });
-                    if (error) throw new Error(error.message);
-                    errorDiv.innerHTML = '✅ Registrado. Inicia sesión ahora.';
-                    authMode = 'login';
-                    document.getElementById('login-email').value = '';
-                    document.getElementById('login-password').value = '';
-                    return;
-                }
-
-                errorDiv.innerHTML = '';
-                checkAuth();
-            } catch (err) {
-                errorDiv.innerHTML = '❌ ' + err.message;
-            }
-        }
-
-        function toggleAuthMode() {
-            authMode = authMode === 'login' ? 'register' : 'login';
-            const authContent = document.getElementById('auth-content');
-            const toggle = document.querySelector('.auth-toggle a');
-
-            if (authMode === 'register') {
-                authContent.querySelector('button').textContent = 'Registrarse';
-                toggle.textContent = '¿Ya tenés cuenta? Inicia sesión aquí';
-                document.querySelector('.auth-container h1').textContent = '📝 Crear Cuenta';
-            } else {
-                authContent.querySelector('button').textContent = 'Ingresar';
-                toggle.textContent = '¿Sin cuenta? Registrate aquí';
-                document.querySelector('.auth-container h1').textContent = '💰 Gestor de Pagos';
-            }
-        }
-
-        async function handleLogout() {
-            await supabase.auth.signOut();
+        function handleUserSelect(user) {
+            currentUser = user;
+            localStorage.setItem('selectedUser', user);
             checkAuth();
         }
 
-        async function checkAuth() {
-            const { data: { user } } = await supabase.auth.getUser();
+        function handleLogout() {
+            currentUser = null;
+            localStorage.removeItem('selectedUser');
+            if (refreshInterval) clearInterval(refreshInterval);
+            checkAuth();
+        }
 
-            if (user) {
-                currentUser = user;
+        function checkAuth() {
+            const savedUser = localStorage.getItem('selectedUser');
+
+            if (savedUser) {
+                currentUser = savedUser;
+                document.getElementById('current-user-name').textContent = savedUser.charAt(0).toUpperCase() + savedUser.slice(1);
                 document.getElementById('auth-screen').style.display = 'none';
                 document.getElementById('app-screen').style.display = 'block';
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('date').value = today;
                 loadPayments();
-                setInterval(loadPayments, 5000);
+                if (refreshInterval) clearInterval(refreshInterval);
+                refreshInterval = setInterval(loadPayments, 5000);
             } else {
                 currentUser = null;
+                if (refreshInterval) clearInterval(refreshInterval);
                 document.getElementById('auth-screen').style.display = 'block';
                 document.getElementById('app-screen').style.display = 'none';
             }
@@ -590,7 +554,7 @@
             const { error } = await supabase
                 .from('payments')
                 .insert([{
-                    user_id: currentUser.id,
+                    user_id: currentUser,
                     provider,
                     amount,
                     payment_date: date,
@@ -619,7 +583,7 @@
             const { data, error } = await supabase
                 .from('payments')
                 .select('*')
-                .eq('user_id', currentUser.id)
+                .eq('user_id', currentUser)
                 .order('payment_date', { ascending: true });
 
             if (error) {
@@ -689,7 +653,7 @@
             await supabase
                 .from('payment_history')
                 .insert([{
-                    user_id: currentUser.id,
+                    user_id: currentUser,
                     payment_id: id,
                     action: 'Modificado',
                     old_values: { provider: payment.provider, amount: payment.amount, payment_date: payment.payment_date },
@@ -711,7 +675,7 @@
             await supabase
                 .from('payment_history')
                 .insert([{
-                    user_id: currentUser.id,
+                    user_id: currentUser,
                     payment_id: id,
                     action: 'Eliminado',
                     old_values: payment
@@ -882,8 +846,6 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             checkAuth();
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('date').value = today;
         });
     </script>
 </body>
