@@ -1,0 +1,6 @@
+{
+  "name": "kupe-gestor-pagos",
+  "version": "1.0.0",
+  "description": "Gestor de pagos en la nube",
+  "private": true
+}
